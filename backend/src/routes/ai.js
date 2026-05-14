@@ -206,4 +206,97 @@ Be helpful, concise, and provide actionable advice. Use markdown formatting for 
   }
 });
 
+// Audit-driven addition: "AI-driven connector discovery (suggest connectors based on user's tech stack)".
+router.post('/discover-connectors', async (req, res) => {
+  try {
+    const { tech_stack, integration_goals, existing_connectors } = req.body;
+    if (!tech_stack && !integration_goals) {
+      return res.status(400).json({ error: 'tech_stack or integration_goals is required' });
+    }
+    const systemPrompt = `You are an integration platform advisor. Given a user's tech stack and integration goals, recommend connectors to build or enable. Respond with strict JSON only of the form: {"recommended_connectors": [{"name": <string>, "category": <string>, "priority": "high|medium|low", "reason": <string>, "data_volume_hint": <string>, "auth_type": <string>}], "stack_gaps": [<strings>], "rollout_order": [<connector names>]}.`;
+    const userMessage = `Tech stack: ${JSON.stringify(tech_stack || null)}\nIntegration goals: ${JSON.stringify(integration_goals || null)}\nExisting connectors: ${JSON.stringify(existing_connectors || [])}`;
+    const result = await callOpenRouter(systemPrompt, userMessage);
+    res.json({ result });
+  } catch (err) {
+    console.error('Error in connector discovery:', err);
+    res.status(500).json({ error: err.message || 'Failed to discover connectors' });
+  }
+});
+
+// Audit-driven addition: "Anomaly detection in data flows (flag unexpected volume/pattern changes)".
+router.post('/detect-flow-anomalies', async (req, res) => {
+  try {
+    const { workflow_id, recent_metrics, baseline_metrics, lookback } = req.body;
+    if (!recent_metrics) {
+      return res.status(400).json({ error: 'recent_metrics is required' });
+    }
+    const systemPrompt = `You are a data-flow observability analyst. Compare recent integration metrics against a baseline and flag anomalies. Respond with strict JSON only of the form: {"anomalies": [{"metric": <string>, "expected": <number-or-string>, "observed": <number-or-string>, "severity": "low|medium|high|critical", "likely_cause": <string>, "recommended_check": <string>}], "overall_health": "healthy|degraded|incident", "summary": <string>}.`;
+    const userMessage = `Workflow: ${workflow_id || 'unspecified'}\nLookback: ${lookback || '24h'}\n\nRecent metrics:\n${JSON.stringify(recent_metrics, null, 2)}\n\nBaseline metrics:\n${JSON.stringify(baseline_metrics || null, null, 2)}`;
+    const result = await callOpenRouter(systemPrompt, userMessage);
+    res.json({ result });
+  } catch (err) {
+    console.error('Error detecting flow anomalies:', err);
+    res.status(500).json({ error: err.message || 'Failed to detect flow anomalies' });
+  }
+});
+
+// Audit-driven addition: "Cost optimizer (identify high-latency/redundant transformations)".
+router.post('/optimize-cost', async (req, res) => {
+  try {
+    const { workflows, transformations, sample_traces } = req.body;
+    if (!workflows && !transformations) {
+      return res.status(400).json({ error: 'workflows or transformations is required' });
+    }
+    const systemPrompt = `You are an integration cost optimizer. Identify redundant or high-latency steps and propose consolidations. Respond with strict JSON only of the form: {"recommendations": [{"target": <string>, "action": "merge|drop|cache|defer|rewrite", "expected_savings": <string>, "risk": "low|medium|high", "rationale": <string>}], "estimated_total_savings_pct": <number>, "warnings": [<strings>]}.`;
+    const userMessage = `Workflows:\n${JSON.stringify(workflows || [], null, 2)}\n\nTransformations:\n${JSON.stringify(transformations || [], null, 2)}\n\nSample traces:\n${JSON.stringify(sample_traces || [], null, 2)}`;
+    const result = await callOpenRouter(systemPrompt, userMessage);
+    res.json({ result });
+  } catch (err) {
+    console.error('Error optimizing cost:', err);
+    res.status(500).json({ error: err.message || 'Failed to optimize cost' });
+  }
+});
+
+// Apply pass 4 mechanical: data-quality-rules generator
+router.post('/data-quality-rules', async (req, res) => {
+  try {
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey || apiKey === 'your-openrouter-api-key-here') {
+      return res.status(503).json({ error: 'OPENROUTER_API_KEY is not configured' });
+    }
+    const { schema, sample_records, business_rules, severity_thresholds } = req.body;
+    if (!schema && !sample_records) {
+      return res.status(400).json({ error: 'schema or sample_records is required' });
+    }
+    const systemPrompt = `You are a data quality engineer. Generate machine-checkable data-quality rules for an integration pipeline. Respond with strict JSON only of the form: {"rules": [{"id": <string>, "field": <string>, "type": "not_null|range|regex|enum|reference|freshness|distribution", "expression": <string>, "severity": "low|medium|high|critical", "rationale": <string>, "alert_threshold_pct": <number>}], "coverage_gaps": [<strings>], "monitoring_plan": <string>, "summary": <string>}.`;
+    const userMessage = `Schema:\n${JSON.stringify(schema || null, null, 2)}\n\nSample records:\n${JSON.stringify(sample_records || [], null, 2)}\n\nBusiness rules:\n${JSON.stringify(business_rules || [], null, 2)}\n\nSeverity thresholds:\n${JSON.stringify(severity_thresholds || null, null, 2)}`;
+    const result = await callOpenRouter(systemPrompt, userMessage);
+    res.json({ result });
+  } catch (err) {
+    console.error('Error generating data-quality rules:', err);
+    res.status(500).json({ error: err.message || 'Failed to generate data-quality rules' });
+  }
+});
+
+// Apply pass 4 mechanical: schema alignment helper across CSV/JSON/Avro/Parquet
+router.post('/schema-alignment', async (req, res) => {
+  try {
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey || apiKey === 'your-openrouter-api-key-here') {
+      return res.status(503).json({ error: 'OPENROUTER_API_KEY is not configured' });
+    }
+    const { schemas, canonical_target, alignment_goals } = req.body;
+    if (!Array.isArray(schemas) || schemas.length < 2) {
+      return res.status(400).json({ error: 'schemas (array of 2+) is required' });
+    }
+    const systemPrompt = `You are a data integration architect specializing in multi-modal schema alignment (CSV, JSON, Avro, Parquet, Protobuf). Produce a canonical alignment plan and per-source field mappings. Respond with strict JSON only of the form: {"canonical_schema": [{"field": <string>, "type": <string>, "nullable": <bool>, "description": <string>}], "per_source_mappings": [{"source": <string>, "fields": [{"source_field": <string>, "canonical_field": <string>, "transformation": <string>, "confidence": "low|medium|high"}], "unmapped_source_fields": [<strings>], "missing_canonical_fields": [<strings>]}], "type_conversions": [<strings>], "warnings": [<strings>], "summary": <string>}.`;
+    const userMessage = `Schemas (${schemas.length}):\n${JSON.stringify(schemas, null, 2)}\n\nCanonical target preference: ${canonical_target || 'derive automatically'}\nAlignment goals: ${JSON.stringify(alignment_goals || null)}`;
+    const result = await callOpenRouter(systemPrompt, userMessage);
+    res.json({ result });
+  } catch (err) {
+    console.error('Error in schema alignment:', err);
+    res.status(500).json({ error: err.message || 'Failed to align schemas' });
+  }
+});
+
 module.exports = router;

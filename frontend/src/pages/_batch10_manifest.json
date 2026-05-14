@@ -1,0 +1,24 @@
+{
+  "marker": "// === Batch 10 Gaps & Frontend Mounts ===",
+  "project": "integrator",
+  "items": [
+    "<Route path=\"/batch10/cf-pre-built-connector-library-and-sdk\" element={<CfPreBuiltConnectorLibraryAndSdk />} />",
+    "<Route path=\"/batch10/cf-visual-drag-drop-workflow-builder-backed\" element={<CfVisualDragDropWorkflowBuilderBacked />} />",
+    "<Route path=\"/batch10/cf-pii-detection-masking-ai-applied-to\" element={<CfPiiDetectionMaskingAiAppliedTo />} />",
+    "<Route path=\"/batch10/cf-connector-marketplace-with-reviews-and-reproducible\" element={<CfConnectorMarketplaceWithReviewsAndReproducible />} />",
+    "<Route path=\"/batch10/cf-replay-and-fix-agent-for-failed\" element={<CfReplayAndFixAgentForFailed />} />",
+    "<Route path=\"/batch10/cf-ai-generated-documentation-per-integration-auto\" element={<CfAiGeneratedDocumentationPerIntegrationAuto />} />",
+    "<Route path=\"/batch10/gap-ai-covers-mapping-error-workflow-cost\" element={<GapAiCoversMappingErrorWorkflowCost />} />",
+    "<Route path=\"/batch10/gap-ai-powered-data-masking-pii-detection\" element={<GapAiPoweredDataMaskingPiiDetection />} />",
+    "<Route path=\"/batch10/gap-ai-for-replay-and-fix-on\" element={<GapAiForReplayAndFixOn />} />",
+    "<Route path=\"/batch10/gap-ai-auto-doc-generator-for-integrations\" element={<GapAiAutoDocGeneratorForIntegrations />} />",
+    "<Route path=\"/batch10/gap-streaming-chat-assistant-with-flow-execution\" element={<GapStreamingChatAssistantWithFlowExecution />} />",
+    "<Route path=\"/batch10/gap-no-pre-built-connector-library-salesforce\" element={<GapNoPreBuiltConnectorLibrarySalesforce />} />",
+    "<Route path=\"/batch10/gap-no-visual-workflow-builder-ui\" element={<GapNoVisualWorkflowBuilderUi />} />",
+    "<Route path=\"/batch10/gap-no-tenant-isolation\" element={<GapNoTenantIsolation />} />",
+    "<Route path=\"/batch10/gap-no-sla-based-pricing-metering\" element={<GapNoSlaBasedPricingMetering />} />",
+    "<Route path=\"/batch10/gap-no-audit-log-review-ui\" element={<GapNoAuditLogReviewUi />} />",
+    "<Route path=\"/batch10/gap-no-sdk-for-custom-connector-authors\" element={<GapNoSdkForCustomConnectorAuthors />} />",
+    "<Route path=\"/batch10/gap-no-marketplace-for-community-connectors\" element={<GapNoMarketplaceForCommunityConnectors />} />"
+  ]
+}

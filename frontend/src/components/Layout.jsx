@@ -130,6 +130,13 @@ export default function Layout({ children }) {
                 <span className="sidebar-item-icon">🤖</span>
                 {!collapsed && <span className="sidebar-item-label">AI Assistant</span>}
               </button>
+              <button
+                className={`sidebar-item sidebar-item-ai ${currentPath === 'ai-insights' ? 'active' : ''}`}
+                onClick={() => navigate('/ai-insights')}
+              >
+                <span className="sidebar-item-icon">🧠</span>
+                {!collapsed && <span className="sidebar-item-label">AI Insights</span>}
+              </button>
             </div>
           </nav>
 
