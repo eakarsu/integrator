@@ -5,6 +5,8 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import FeaturePage from './pages/FeaturePage';
 import AIAssistant from './pages/AIAssistant';
+import AIInsights from './pages/AIInsights';
+import CustomViewsPage from './pages/CustomViewsPage';
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated } = useAuth();
@@ -42,6 +44,22 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <AIAssistant />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ai-insights"
+        element={
+          <ProtectedRoute>
+            <AIInsights />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/custom-views"
+        element={
+          <ProtectedRoute>
+            <CustomViewsPage />
           </ProtectedRoute>
         }
       />
