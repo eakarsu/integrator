@@ -70,6 +70,7 @@ app.use('/api/settings', authMiddleware, settingsRoutes);
 app.use('/api/error-retries', authMiddleware, errorRetriesRoutes);
 app.use('/api/ai', authMiddleware, aiRoutes);
 app.use('/api/connector-library', require('./routes/connectorLibrary')); app.use('/api/visual-builder', require('./routes/visualBuilder')); app.use('/api/pii-masking', require('./routes/piiMasking')); app.use('/api/connector-marketplace', require('./routes/connectorMarketplace')); app.use('/api/replay-fix', require('./routes/replayFix')); app.use('/api/auto-docs', require('./routes/autoDocs'));
+app.use('/api/custom-views', require('./routes/customViews'));
 
 // Global error handler
 app.use((err, req, res, next) => {

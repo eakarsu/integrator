@@ -137,6 +137,13 @@ export default function Layout({ children }) {
                 <span className="sidebar-item-icon">🧠</span>
                 {!collapsed && <span className="sidebar-item-label">AI Insights</span>}
               </button>
+              <button
+                className={`sidebar-item ${currentPath === 'custom-views' ? 'active' : ''}`}
+                onClick={() => navigate('/custom-views')}
+              >
+                <span className="sidebar-item-icon">🧩</span>
+                {!collapsed && <span className="sidebar-item-label">Integration Views</span>}
+              </button>
             </div>
           </nav>
 
