@@ -1,105 +1,78 @@
 const express = require('express');
-const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const pool = require('../db');
+const { z } = require('zod');
+const db = require('../db');
+const { getConfig } = require('../config');
+const auth = require('../middleware/auth');
+const validate = require('../middleware/validate');
+const { asyncRoute } = require('../errors');
+const { appendAudit } = require('../services/audit');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'integrator-secret-key-2024';
+const router = express.Router();
+const loginSchema = z.object({
+  email: z.email().max(320).transform((value) => value.toLowerCase()),
+  password: z.string().min(12).max(128),
+}).strict();
+const dummyPasswordHash = '$2a$12$C6UzMDM.H6dfI/f/IKcEe.8Glz5RyY.3/8U.OqWqKc1vCvkf6XwO.';
 
-// POST /api/auth/login
-router.post('/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
+function tokenFor(user) {
+  return jwt.sign(
+    { tenantId: user.tenant_id, role: user.role, authVersion: user.auth_version },
+    getConfig().jwtSecret,
+    { algorithm: 'HS256', subject: String(user.id), issuer: 'integrator-api', audience: 'integrator-ui', expiresIn: '1h' },
+  );
+}
 
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
-    }
-
-    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
-
-    if (result.rows.length === 0) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    const user = result.rows[0];
-    const validPassword = await bcrypt.compare(password, user.password);
-
-    if (!validPassword) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    // Update last_login
-    await pool.query('UPDATE users SET last_login = NOW() WHERE id = $1', [user.id]);
-
-    const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
-      JWT_SECRET,
-      { expiresIn: '24h' }
-    );
-
-    res.json({
-      token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        status: user.status,
-        department: user.department,
-        avatar_url: user.avatar_url,
-      },
-    });
-  } catch (err) {
-    console.error('Login error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+router.post('/login', validate(loginSchema), asyncRoute(async (req, res) => {
+  const result = await db.query(
+    `SELECT users.id, users.tenant_id, users.name, users.email, users.password_hash,
+            users.role, users.status, users.auth_version
+       FROM users JOIN tenants ON tenants.id=users.tenant_id
+      WHERE users.email = $1 AND tenants.status='active'`,
+    [req.body.email],
+  );
+  const user = result.rows[0];
+  const valid = await bcrypt.compare(req.body.password, user?.password_hash || dummyPasswordHash);
+  if (!user || !valid || user.status !== 'active') {
+    return res.status(401).json({ error: 'Invalid credentials', code: 'INVALID_CREDENTIALS' });
   }
-});
-
-// POST /api/auth/register
-router.post('/register', async (req, res) => {
-  try {
-    const { name, email, password, role, department } = req.body;
-
-    if (!name || !email || !password) {
-      return res.status(400).json({ error: 'Name, email, and password are required' });
-    }
-
-    const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
-    if (existing.rows.length > 0) {
-      return res.status(409).json({ error: 'Email already registered' });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const result = await pool.query(
-      `INSERT INTO users (name, email, password, role, status, department, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, 'active', $5, NOW(), NOW()) RETURNING *`,
-      [name, email, hashedPassword, role || 'viewer', department || null]
-    );
-
-    const user = result.rows[0];
-    const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
-      JWT_SECRET,
-      { expiresIn: '24h' }
-    );
-
-    res.status(201).json({
-      token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        status: user.status,
-        department: user.department,
-        avatar_url: user.avatar_url,
-      },
+  await db.transaction(async (client) => {
+    await client.query('UPDATE users SET last_login=NOW() WHERE id=$1 AND tenant_id=$2', [user.id, user.tenant_id]);
+    await appendAudit(client, {
+      tenantId: user.tenant_id,
+      actorId: user.id,
+      action: 'session.created',
+      resourceType: 'user',
+      resourceId: user.id,
+      details: {},
     });
-  } catch (err) {
-    console.error('Register error:', err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+  });
+  res.json({
+    token: tokenFor(user),
+    expiresIn: 3600,
+    user: { id: user.id, tenantId: user.tenant_id, name: user.name, email: user.email, role: user.role },
+  });
+}));
+
+router.get('/me', auth, (req, res) => res.json({ user: req.user }));
+
+router.post('/logout-all', auth, asyncRoute(async (req, res) => {
+  await db.transaction(async (client) => {
+    await client.query(
+      'UPDATE users SET auth_version=auth_version+1, updated_at=NOW() WHERE id=$1 AND tenant_id=$2',
+      [req.user.id, req.user.tenantId],
+    );
+    await appendAudit(client, {
+      tenantId: req.user.tenantId,
+      actorId: req.user.id,
+      action: 'session.revoked_all',
+      resourceType: 'user',
+      resourceId: req.user.id,
+      details: {},
+    });
+  });
+  res.status(204).end();
+}));
 
 module.exports = router;

@@ -9,12 +9,6 @@ export default function Login() {
   const { login, loading } = useAuth();
   const navigate = useNavigate();
 
-  const handleAutoFill = () => {
-    setEmail('admin@integrator.com');
-    setPassword('admin123');
-    setError('');
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -81,13 +75,10 @@ export default function Login() {
             )}
           </button>
 
-          <button type="button" className="btn btn-ghost btn-full" onClick={handleAutoFill}>
-            🔑 Auto Fill Credentials
-          </button>
         </form>
 
         <div className="login-footer">
-          <p>Demo credentials: admin@integrator.com / admin123</p>
+          <p>Accounts are provisioned by an administrator. Credentials are never embedded in the client.</p>
         </div>
       </div>
     </div>

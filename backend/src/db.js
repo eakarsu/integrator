@@ -1,17 +1,47 @@
-require('dotenv').config({ path: '../.env' });
 const { Pool } = require('pg');
+const { getConfig } = require('./config');
 
-const pool = new Pool({
-  user: process.env.DB_USER || 'postgres',
-  host: process.env.DB_HOST || 'localhost',
-  database: process.env.DB_NAME || 'integrator_db',
-  password: process.env.DB_PASSWORD || 'postgres',
-  port: parseInt(process.env.DB_PORT) || 5432,
-});
+let pool;
 
-pool.on('error', (err) => {
-  console.error('Unexpected error on idle client', err);
-  process.exit(-1);
-});
+function getPool() {
+  if (!pool) {
+    pool = new Pool({
+      connectionString: getConfig().databaseUrl,
+      max: getConfig().dbPoolSize,
+      connectionTimeoutMillis: 5000,
+      idleTimeoutMillis: 30000,
+    });
+    pool.on('error', (error) => console.error('Unexpected PostgreSQL pool error', error));
+  }
+  return pool;
+}
 
-module.exports = pool;
+async function transaction(fn, options = {}) {
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    if (options.isolationLevel) {
+      await client.query(`SET TRANSACTION ISOLATION LEVEL ${options.isolationLevel}`);
+    }
+    const value = await fn(client);
+    await client.query('COMMIT');
+    return value;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+module.exports = {
+  getPool,
+  query(...args) {
+    return getPool().query(...args);
+  },
+  transaction,
+  async close() {
+    if (pool) await pool.end();
+    pool = undefined;
+  },
+};

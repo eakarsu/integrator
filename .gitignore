@@ -2,6 +2,12 @@
 .env
 .env.*
 !.env.example
+backend/.env
+frontend/.env
+*.dump
+*.sql.gz
+.env.*
+!.env.example
 !.env.sample
 *.pem
 *.key
@@ -91,3 +97,4 @@ token.txt
 id_rsa*
 **/credentials*.json
 **/serviceAccount*.json
+!.env.example

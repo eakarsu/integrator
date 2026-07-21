@@ -1,28 +1,43 @@
 const jwt = require('jsonwebtoken');
+const db = require('../db');
+const { getConfig } = require('../config');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'integrator-secret-key-2024';
+module.exports = async function authMiddleware(req, res, next) {
+  const match = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || '');
+  if (!match) return res.status(401).json({ error: 'Bearer token required', code: 'AUTH_REQUIRED' });
 
-const authMiddleware = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader) {
-    return res.status(401).json({ error: 'No token provided' });
+  let decoded;
+  try {
+    decoded = jwt.verify(match[1], getConfig().jwtSecret, {
+      algorithms: ['HS256'],
+      issuer: 'integrator-api',
+      audience: 'integrator-ui',
+    });
+  } catch (_error) {
+    return res.status(401).json({ error: 'Token invalid or expired', code: 'TOKEN_INVALID' });
   }
-
-  const parts = authHeader.split(' ');
-  if (parts.length !== 2 || parts[0] !== 'Bearer') {
-    return res.status(401).json({ error: 'Token format invalid' });
-  }
-
-  const token = parts[1];
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
+    const result = await db.query(
+      `SELECT users.id, users.tenant_id, users.email, users.name, users.role,
+              users.status, users.auth_version
+         FROM users JOIN tenants ON tenants.id=users.tenant_id
+        WHERE users.id = $1 AND users.tenant_id = $2 AND tenants.status='active'`,
+      [decoded.sub, decoded.tenantId],
+    );
+    const user = result.rows[0];
+    if (!user || user.status !== 'active' || user.auth_version !== decoded.authVersion) {
+      return res.status(401).json({ error: 'Session is no longer valid', code: 'SESSION_REVOKED' });
+    }
+    req.user = {
+      id: String(user.id),
+      tenantId: user.tenant_id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+    };
     next();
-  } catch (err) {
-    return res.status(401).json({ error: 'Token invalid or expired' });
+  } catch (error) {
+    next(error);
   }
 };
-
-module.exports = authMiddleware;

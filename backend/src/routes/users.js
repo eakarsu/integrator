@@ -1,106 +1,106 @@
 const express = require('express');
-const router = express.Router();
 const bcrypt = require('bcryptjs');
-const pool = require('../db');
+const { z } = require('zod');
+const db = require('../db');
+const { HttpError, asyncRoute } = require('../errors');
+const requireRole = require('../middleware/requireRole');
+const validate = require('../middleware/validate');
+const { appendAudit } = require('../services/audit');
 
-// GET /api/users
-router.get('/', async (req, res) => {
-  try {
-    const result = await pool.query(
-      'SELECT id, name, email, role, status, department, last_login, avatar_url, created_at, updated_at FROM users ORDER BY created_at DESC'
+const router = express.Router();
+const createSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  email: z.email().max(320).transform((value) => value.toLowerCase()),
+  password: z.string().min(12).max(128),
+  role: z.enum(['admin', 'editor', 'viewer']),
+}).strict();
+const updateSchema = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
+  role: z.enum(['admin', 'editor', 'viewer']).optional(),
+  status: z.enum(['active', 'disabled']).optional(),
+  password: z.string().min(12).max(128).optional(),
+}).strict().refine((value) => Object.keys(value).length > 0, { message: 'At least one field is required' });
+const idParamSchema = z.object({ id: z.string().regex(/^[1-9]\d{0,18}$/) }).strict();
+
+router.use(requireRole('admin'));
+
+router.get('/', asyncRoute(async (req, res) => {
+  const result = await db.query(
+    `SELECT id, name, email, role, status, last_login, created_at, updated_at
+       FROM users WHERE tenant_id=$1 ORDER BY created_at`,
+    [req.user.tenantId],
+  );
+  res.json(result.rows);
+}));
+
+router.post('/', validate(createSchema), asyncRoute(async (req, res) => {
+  const passwordHash = await bcrypt.hash(req.body.password, 12);
+  const user = await db.transaction(async (client) => {
+    const result = await client.query(
+      `INSERT INTO users (tenant_id,name,email,password_hash,role,created_by)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       RETURNING id, name, email, role, status, created_at, updated_at`,
+      [req.user.tenantId, req.body.name, req.body.email, passwordHash, req.body.role, req.user.id],
     );
-    res.json(result.rows);
-  } catch (err) {
-    console.error('Error fetching users:', err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+    await appendAudit(client, {
+      tenantId: req.user.tenantId,
+      actorId: req.user.id,
+      action: 'user.created',
+      resourceType: 'user',
+      resourceId: result.rows[0].id,
+      details: { role: req.body.role },
+    });
+    return result.rows[0];
+  });
+  res.status(201).json(user);
+}));
 
-// GET /api/users/:id
-router.get('/:id', async (req, res) => {
-  try {
-    const result = await pool.query(
-      'SELECT id, name, email, role, status, department, last_login, avatar_url, created_at, updated_at FROM users WHERE id = $1',
-      [req.params.id]
+router.patch('/:id', validate(idParamSchema, 'params'), validate(updateSchema), asyncRoute(async (req, res) => {
+  if (String(req.params.id) === String(req.user.id) && req.body.status === 'disabled') {
+    throw new HttpError(409, 'CANNOT_DISABLE_SELF', 'Administrators cannot disable their own account');
+  }
+  const user = await db.transaction(async (client) => {
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`tenant-admins:${req.user.tenantId}`]);
+    const currentResult = await client.query(
+      'SELECT * FROM users WHERE id=$1 AND tenant_id=$2 FOR UPDATE',
+      [req.params.id, req.user.tenantId],
     );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    res.json(result.rows[0]);
-  } catch (err) {
-    console.error('Error fetching user:', err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// POST /api/users
-router.post('/', async (req, res) => {
-  try {
-    const { name, email, password, role, status, department, avatar_url } = req.body;
-    const hashedPassword = password ? await bcrypt.hash(password, 10) : await bcrypt.hash('default123', 10);
-    const result = await pool.query(
-      `INSERT INTO users (name, email, password, role, status, department, avatar_url, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW()) RETURNING id, name, email, role, status, department, avatar_url, created_at, updated_at`,
-      [name, email, hashedPassword, role || 'viewer', status || 'active', department, avatar_url]
-    );
-    res.status(201).json(result.rows[0]);
-  } catch (err) {
-    console.error('Error creating user:', err);
-    if (err.code === '23505') {
-      return res.status(409).json({ error: 'Email already exists' });
-    }
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// PUT /api/users/:id
-router.put('/:id', async (req, res) => {
-  try {
-    const { name, email, password, role, status, department, avatar_url } = req.body;
-
-    let result;
-    if (password) {
-      const hashedPassword = await bcrypt.hash(password, 10);
-      result = await pool.query(
-        `UPDATE users SET name = $1, email = $2, password = $3, role = $4, status = $5,
-         department = $6, avatar_url = $7, updated_at = NOW() WHERE id = $8
-         RETURNING id, name, email, role, status, department, avatar_url, created_at, updated_at`,
-        [name, email, hashedPassword, role, status, department, avatar_url, req.params.id]
+    const current = currentResult.rows[0];
+    if (!current) throw new HttpError(404, 'USER_NOT_FOUND', 'User not found');
+    const removesActiveAdmin = current.role === 'admin' && current.status === 'active' &&
+      ((req.body.role && req.body.role !== 'admin') || req.body.status === 'disabled');
+    if (removesActiveAdmin) {
+      const admins = await client.query(
+        `SELECT COUNT(*)::integer AS count FROM users
+          WHERE tenant_id=$1 AND role='admin' AND status='active'`,
+        [req.user.tenantId],
       );
-    } else {
-      result = await pool.query(
-        `UPDATE users SET name = $1, email = $2, role = $3, status = $4,
-         department = $5, avatar_url = $6, updated_at = NOW() WHERE id = $7
-         RETURNING id, name, email, role, status, department, avatar_url, created_at, updated_at`,
-        [name, email, role, status, department, avatar_url, req.params.id]
-      );
+      if (admins.rows[0].count <= 1) {
+        throw new HttpError(409, 'LAST_ADMIN_REQUIRED', 'At least one active administrator is required');
+      }
     }
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    res.json(result.rows[0]);
-  } catch (err) {
-    console.error('Error updating user:', err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// DELETE /api/users/:id
-router.delete('/:id', async (req, res) => {
-  try {
-    const result = await pool.query(
-      'DELETE FROM users WHERE id = $1 RETURNING id, name, email, role',
-      [req.params.id]
+    const passwordHash = req.body.password ? await bcrypt.hash(req.body.password, 12) : current.password_hash;
+    const revokesSession = req.body.password || (req.body.status && req.body.status !== current.status) ||
+      (req.body.role && req.body.role !== current.role);
+    const result = await client.query(
+      `UPDATE users SET name=$1, role=$2, status=$3, password_hash=$4,
+          auth_version=auth_version+$5, updated_at=NOW()
+        WHERE id=$6 AND tenant_id=$7
+        RETURNING id, name, email, role, status, created_at, updated_at`,
+      [req.body.name ?? current.name, req.body.role ?? current.role, req.body.status ?? current.status,
+        passwordHash, revokesSession ? 1 : 0, current.id, req.user.tenantId],
     );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    res.json({ message: 'User deleted', data: result.rows[0] });
-  } catch (err) {
-    console.error('Error deleting user:', err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+    await appendAudit(client, {
+      tenantId: req.user.tenantId,
+      actorId: req.user.id,
+      action: 'user.updated',
+      resourceType: 'user',
+      resourceId: current.id,
+      details: { changedFields: Object.keys(req.body), sessionsRevoked: Boolean(revokesSession) },
+    });
+    return result.rows[0];
+  });
+  res.json(user);
+}));
 
 module.exports = router;

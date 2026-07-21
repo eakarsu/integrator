@@ -5,10 +5,15 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('user');
-    return saved ? JSON.parse(saved) : null;
+    const saved = sessionStorage.getItem('user');
+    try {
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      sessionStorage.clear();
+      return null;
+    }
   });
-  const [token, setToken] = useState(() => localStorage.getItem('token'));
+  const [token, setToken] = useState(() => sessionStorage.getItem('token'));
   const [loading, setLoading] = useState(false);
 
   const login = async (email, password) => {
@@ -16,8 +21,8 @@ export function AuthProvider({ children }) {
     try {
       const res = await api.post('/auth/login', { email, password });
       const { token: jwt, user: userData } = res.data;
-      localStorage.setItem('token', jwt);
-      localStorage.setItem('user', JSON.stringify(userData));
+      sessionStorage.setItem('token', jwt);
+      sessionStorage.setItem('user', JSON.stringify(userData));
       setToken(jwt);
       setUser(userData);
       return { success: true };
@@ -29,11 +34,15 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setToken(null);
-    setUser(null);
+  const logout = async () => {
+    try {
+      if (token) await api.post('/auth/logout-all');
+    } finally {
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('user');
+      setToken(null);
+      setUser(null);
+    }
   };
 
   const isAuthenticated = !!token;
