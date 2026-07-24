@@ -56,6 +56,7 @@ function createApp() {
   app.use('/api/workflows', auth, require('./routes/workflows'));
   app.use('/api/users', auth, require('./routes/users'));
   app.use('/api/audit', auth, require('./routes/audit'));
+  app.use('/api/runtime-ai', require('./routes/runtimeAi'));
 
   app.use((_req, _res, next) => next(new HttpError(404, 'NOT_FOUND', 'Route not found')));
   app.use((error, req, res, _next) => {

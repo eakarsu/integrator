@@ -25,8 +25,15 @@ async function main() {
   await assertSchemaCurrent(db);
   const passwordHash = await bcrypt.hash(input.adminPassword, 12);
   const result = await db.transaction(async (client) => {
-    const existing = await client.query('SELECT id FROM users WHERE email=$1', [input.adminEmail]);
-    if (existing.rows[0]) throw new Error('An account with PROVISION_ADMIN_EMAIL already exists; refusing an ambiguous provision operation');
+    const existing = await client.query('SELECT id, tenant_id FROM users WHERE email=$1 FOR UPDATE', [input.adminEmail]);
+    if (existing.rows[0]) {
+      await client.query(
+        `UPDATE users SET name=$1,password_hash=$2,role='admin',status='active',auth_version=auth_version+1,updated_at=NOW()
+          WHERE id=$3`,
+        [input.adminName, passwordHash, existing.rows[0].id],
+      );
+      return { created: false, tenantId: existing.rows[0].tenant_id, userId: existing.rows[0].id };
+    }
     const tenant = await client.query('INSERT INTO tenants(name) VALUES ($1) RETURNING id', [input.tenantName]);
     const user = await client.query(
       `INSERT INTO users(tenant_id,name,email,password_hash,role)
