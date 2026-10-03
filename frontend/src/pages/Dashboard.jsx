@@ -181,7 +181,7 @@ export default function Dashboard() {
         </section>
 
         <div className="operations-grid">
-          <section className="ops-panel">
+          <section className="ops-panel" id="connections">
             <div className="panel-heading"><div><span>01</span><h3>Connections</h3></div><p>Approved HTTP origins; credentials are encrypted by the API.</p></div>
             {canEdit ? <form className="compact-form" onSubmit={createConnection}>
               <label>Name<input required maxLength="120" value={connectionForm.name} onChange={(event) => setConnectionForm({ ...connectionForm, name: event.target.value })} placeholder="Order service" /></label>
@@ -202,7 +202,7 @@ export default function Dashboard() {
             </div>
           </section>
 
-          <section className="ops-panel">
+          <section className="ops-panel" id="workflows">
             <div className="panel-heading"><div><span>02</span><h3>{editingWorkflowId ? 'Workflow revision' : 'Workflow draft'}</h3></div><p>Define a concrete outbound delivery step.</p></div>
             {canEdit ? <form className="compact-form" onSubmit={createWorkflow}>
               <label>Name<input required maxLength="120" value={workflowForm.name} onChange={(event) => setWorkflowForm({ ...workflowForm, name: event.target.value })} placeholder="Deliver new order" /></label>
@@ -217,7 +217,7 @@ export default function Dashboard() {
           </section>
         </div>
 
-        <section className="ops-panel wide-panel">
+        <section className="ops-panel wide-panel" id="runs">
           <div className="panel-heading"><div><span>03</span><h3>Run operations</h3></div><p>Explicit lifecycle transitions prevent unsafe direct status edits.</p></div>
           <div className="workflow-selector">
             <label>Workflow<select value={selectedWorkflow} onChange={(event) => setSelectedWorkflow(event.target.value)}><option value="">Select…</option>{workflows.map((workflow) => <option value={workflow.id} key={workflow.id}>{workflow.name} · {workflow.status}</option>)}</select></label>

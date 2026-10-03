@@ -1,4 +1,5 @@
 import React from 'react';
+import SectionSidebar from './SectionSidebar';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
@@ -11,7 +12,13 @@ export default function Layout({ children }) {
   };
 
   return (
-    <div className="layout">
+    <div className="layout codex-section-shell">
+      <SectionSidebar title="Integrator Control Plane" items={[
+        { href: '#connections', label: 'Connections' },
+        { href: '#workflows', label: 'Workflow Drafts' },
+        { href: '#runs', label: 'Run Operations' },
+      ]} />
+      <div className="codex-section-content">
       <header className="header">
         <div className="header-brand">
           <span className="header-logo">↯</span>
@@ -30,6 +37,7 @@ export default function Layout({ children }) {
         </div>
       </header>
       <main className="operations-main">{children}</main>
+      </div>
     </div>
   );
 }
