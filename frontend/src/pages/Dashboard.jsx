@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Layout from '../components/Layout';
+import RecordDialog from '../components/RecordDialog';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 
@@ -14,6 +15,13 @@ function readableError(error) {
   return error.response?.data?.error || error.message || 'Request failed';
 }
 
+function recordsFrom(response, label) {
+  const payload = response.data;
+  const records = Array.isArray(payload) ? payload : payload?.data;
+  if (!Array.isArray(records)) throw new Error(`${label} response did not contain a record list.`);
+  return records;
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const [connections, setConnections] = useState([]);
@@ -26,21 +34,26 @@ export default function Dashboard() {
   const [runInput, setRunInput] = useState('{"customerId":"example"}');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
+  const [selectedConnection, setSelectedConnection] = useState(null);
+  const [dialogBusy, setDialogBusy] = useState(false);
+  const [dialogError, setDialogError] = useState('');
 
   const refresh = useCallback(async () => {
     const [connectionsResponse, workflowsResponse] = await Promise.all([
       api.get('/connections'),
       api.get('/workflows'),
     ]);
-    setConnections(connectionsResponse.data);
-    setWorkflows(workflowsResponse.data);
-    if (!selectedWorkflow && workflowsResponse.data[0]) setSelectedWorkflow(workflowsResponse.data[0].id);
+    const nextConnections = recordsFrom(connectionsResponse, 'Connections');
+    const nextWorkflows = recordsFrom(workflowsResponse, 'Workflows');
+    setConnections(nextConnections);
+    setWorkflows(nextWorkflows);
+    if (!selectedWorkflow && nextWorkflows[0]) setSelectedWorkflow(nextWorkflows[0].id);
   }, [selectedWorkflow]);
 
   const refreshRuns = useCallback(async () => {
     if (!selectedWorkflow) return setRuns([]);
     const response = await api.get(`/workflows/${selectedWorkflow}/runs`);
-    setRuns(response.data);
+    setRuns(recordsFrom(response, 'Workflow runs'));
   }, [selectedWorkflow]);
 
   useEffect(() => {
@@ -160,6 +173,23 @@ export default function Dashboard() {
     );
   }
 
+  async function saveConnection(values) {
+    setDialogBusy(true); setDialogError('');
+    try {
+      await api.patch(`/connections/${values.id}`, { name: values.name, baseUrl: values.baseUrl, status: values.status });
+      setSelectedConnection(null); setNotice({ type: 'success', text: 'Connection updated.' }); await refresh();
+    } catch (error) { setDialogError(readableError(error)); }
+    finally { setDialogBusy(false); }
+  }
+  async function deleteConnection(values) {
+    setDialogBusy(true); setDialogError('');
+    try {
+      await api.patch(`/connections/${values.id}`, { status: 'disabled' });
+      setSelectedConnection(null); setNotice({ type: 'success', text: 'Connection deleted; it is disabled and retained for audit.' }); await refresh();
+    } catch (error) { setDialogError(readableError(error)); }
+    finally { setDialogBusy(false); }
+  }
+
   return (
     <Layout>
       <div className="operations-shell">
@@ -193,7 +223,7 @@ export default function Dashboard() {
             </form> : <p className="empty-copy">Viewer access is read-only.</p>}
             <div className="resource-list">
               {connections.map((connection) => (
-                <article key={connection.id}>
+                <article key={connection.id} tabIndex={0} role="button" aria-label={`Open connection ${connection.name}`} style={{ cursor: 'pointer' }} onClick={() => { setDialogError(''); setSelectedConnection(connection); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setDialogError(''); setSelectedConnection(connection); } }}>
                   <div><strong>{connection.name}</strong><code>{connection.baseUrl} · {connection.credentialsConfigured ? 'credentials encrypted' : 'no credentials'}</code></div>
                   <Status value={connection.status} />
                 </article>
@@ -231,6 +261,27 @@ export default function Dashboard() {
           </div>
         </section>
       </div>
+      {selectedConnection && <RecordDialog
+        title={selectedConnection.name}
+        item={selectedConnection}
+        busy={dialogBusy}
+        error={dialogError}
+        onClose={() => { setSelectedConnection(null); setDialogError(''); }}
+        onSave={canEdit ? saveConnection : undefined}
+        onDelete={canEdit ? deleteConnection : undefined}
+        deleteLabel="Delete"
+        deleteWarning="The connection is disabled and retained for audit; existing workflow history is unaffected."
+        permissionsNote={canEdit ? '' : 'Viewer access is read-only.'}
+        fields={[
+          { key: 'name' },
+          { key: 'baseUrl', label: 'Base URL' },
+          { key: 'status', type: 'select', options: ['active', 'disabled'] },
+          { key: 'connectorType', label: 'Connector type', editable: false },
+          { key: 'credentialsConfigured', label: 'Credentials', editable: false },
+          { key: 'createdAt', label: 'Created', editable: false },
+          { key: 'updatedAt', label: 'Updated', editable: false }
+        ]}
+      />}
     </Layout>
   );
 }

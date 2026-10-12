@@ -5,6 +5,17 @@ const { asyncRoute, HttpError } = require('../errors');
 
 const router = express.Router();
 
+router.get('/integration-advice/history', auth, asyncRoute(async (req, res) => {
+  const saved = await db.query(
+    `SELECT id, prompt, content, provider, model, created_at AS "createdAt"
+       FROM runtime_ai_results
+      WHERE tenant_id=$1 AND user_id=$2
+      ORDER BY created_at DESC LIMIT 50`,
+    [req.user.tenantId, req.user.id],
+  );
+  res.json(saved.rows);
+}));
+
 router.post('/integration-advice', auth, asyncRoute(async (req, res) => {
   const prompt = String(req.body?.prompt || '').trim();
   if (!prompt || prompt.length > 8000) throw new HttpError(400, 'INVALID_PROMPT', 'Prompt must contain 1 through 8000 characters');

@@ -6,7 +6,7 @@ const db = require('../db');
 const { getConfig } = require('../config');
 const auth = require('../middleware/auth');
 const validate = require('../middleware/validate');
-const { asyncRoute } = require('../errors');
+const { asyncRoute, HttpError } = require('../errors');
 const { appendAudit } = require('../services/audit');
 
 const router = express.Router();
@@ -24,7 +24,7 @@ function tokenFor(user) {
   );
 }
 
-router.post('/login', validate(loginSchema), asyncRoute(async (req, res) => {
+async function signIn(req, res) {
   const result = await db.query(
     `SELECT users.id, users.tenant_id, users.name, users.email, users.password_hash,
             users.role, users.status, users.auth_version
@@ -53,6 +53,23 @@ router.post('/login', validate(loginSchema), asyncRoute(async (req, res) => {
     expiresIn: 3600,
     user: { id: user.id, tenantId: user.tenant_id, name: user.name, email: user.email, role: user.role },
   });
+}
+
+router.post('/login', validate(loginSchema), asyncRoute(signIn));
+
+// The configured demo account is authenticated through the same password check,
+// audit trail and session path as a normal login. Credentials stay on the server.
+router.get('/demo-availability', (_req, res) => {
+  res.json({ available: Boolean(process.env.DEMO_EMAIL && process.env.DEMO_PASSWORD) });
+});
+router.post('/demo-login', asyncRoute(async (req, res) => {
+  if (!process.env.DEMO_EMAIL || !process.env.DEMO_PASSWORD) {
+    throw new HttpError(503, 'DEMO_NOT_CONFIGURED', 'Demo credentials are not configured');
+  }
+  const parsed = loginSchema.safeParse({ email: process.env.DEMO_EMAIL, password: process.env.DEMO_PASSWORD });
+  if (!parsed.success) throw new HttpError(503, 'DEMO_NOT_CONFIGURED', 'Demo credentials are not valid');
+  req.body = parsed.data;
+  return signIn(req, res);
 }));
 
 router.get('/me', auth, (req, res) => res.json({ user: req.user }));

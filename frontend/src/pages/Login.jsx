@@ -1,13 +1,24 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import api from '../api/axios';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const { login, loading } = useAuth();
+  const [demoAvailable, setDemoAvailable] = useState(false);
+  const { login, demoLogin, loading } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => { api.get('/auth/demo-availability').then(({ data }) => setDemoAvailable(data.available)).catch(() => setDemoAvailable(false)); }, []);
+
+  const handleDemo = async () => {
+    setError('');
+    const result = await demoLogin();
+    if (result.success) navigate('/');
+    else setError(result.error);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -67,13 +78,14 @@ export default function Login() {
 
           <button
             type="button"
-            onClick={() => { setEmail(import.meta.env.VITE_DEMO_EMAIL || ''); setPassword(import.meta.env.VITE_DEMO_PASSWORD || ''); }}
-            disabled={!import.meta.env.VITE_DEMO_EMAIL || !import.meta.env.VITE_DEMO_PASSWORD}
-            aria-label="Auto Fill Demo Credentials"
+            onClick={handleDemo}
+            disabled={!demoAvailable || loading}
+            aria-label="Log In as Demo"
             style={{ width: '100%', marginBottom: '12px', padding: '10px 14px', borderRadius: '8px', border: '1px solid currentColor', background: 'transparent', cursor: 'pointer' }}
           >
-            Auto Fill Demo Credentials
+            Log In as Demo
           </button>
+          {!demoAvailable && <p className="login-demo-note">Demo login requires configured demo credentials on the server.</p>}
           <button type="submit" className="btn btn-primary btn-full" disabled={loading}>
             {loading ? (
               <span className="btn-loading">

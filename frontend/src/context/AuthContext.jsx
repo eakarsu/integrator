@@ -34,6 +34,23 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const demoLogin = async () => {
+    setLoading(true);
+    try {
+      const res = await api.post('/auth/demo-login');
+      const { token: jwt, user: userData } = res.data;
+      sessionStorage.setItem('token', jwt);
+      sessionStorage.setItem('user', JSON.stringify(userData));
+      setToken(jwt);
+      setUser(userData);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.response?.data?.error || 'Demo login is unavailable.' };
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const logout = async () => {
     try {
       if (token) await api.post('/auth/logout-all');
@@ -48,7 +65,7 @@ export function AuthProvider({ children }) {
   const isAuthenticated = !!token;
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, loading, isAuthenticated }}>
+    <AuthContext.Provider value={{ user, token, login, demoLogin, logout, loading, isAuthenticated }}>
       {children}
     </AuthContext.Provider>
   );
