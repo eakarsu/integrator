@@ -206,6 +206,6 @@ if (!databaseUrl) {
     assert.equal((await response.json()).valid, true);
     response = await request('/health/ready');
     assert.equal(response.status, 200);
-    assert.equal((await response.json()).schema.expected, 2);
+    assert.equal((await response.json()).schema.expected, 3);
   });
 }
